@@ -122,7 +122,7 @@ export function report(runId: string, grades: TrialGrade[]): { summaries: Record
   const gates = applyGates(summaries, cfg.gates);
   const nf = necessityFilter(grades);
   // tasks that fail in every arm cannot separate arms either; list them so nobody mistakes them for signal
-  const allFail = [...nf.separating].filter(t => grades.filter(g => g.task === t && g.arm !== "none" && g.outcome).every(g => g.outcome!.pass === 0));
+  const allFail = [...nf.separating].filter(t => { const others = grades.filter(g => g.task === t && g.arm !== "none" && g.outcome); return others.length > 0 && others.every(g => g.outcome!.pass === 0); });
   const allFailSet = new Set(allFail);
   let primary: Record<string, ArmSummary> | undefined;
   if (nf.hasNoneArm && nf.separating.size) {

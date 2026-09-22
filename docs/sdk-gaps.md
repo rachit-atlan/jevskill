@@ -43,8 +43,30 @@ Claude Code transcripts would make every model turn a child span with `gen_ai.*`
 Every create returns 409 until `POST /registry/v1/users/onboard` has run for the bearer. Nothing in the SDK docs says so, and
 the SDK has no `onboard()`. Close it: one line in getting-started plus a helper. Implemented locally as `bun run atlan-onboard`.
 
+## 7. `pushDataset` never prunes, so the Registry dataset drifts from the suite
+
+`pushDataset` creates and patches by record name but never archives. After the legacy tasks moved to `tasks/sweep/`, the
+Registry dataset still holds 89 records against a 30-task suite, and a dataset-backed `Eval` would run all 89. The archive
+route exists on the gateway; the helper does not use it. Close it: a `prune: true` option, or a returned list of records the
+suite no longer names so the caller can archive them.
+
+## 8. No lineage between experiment groups after a grader or task change
+
+Immutability is right: a re-graded result is a new experiment. But nothing links `k25-v2` to `k25` as "same runs, corrected
+scorers". `comparison_group_id` is a string the caller invents inside opaque `config`, and `baselineExperimentId` points
+sideways (arm → arm), not forwards (lineage → lineage). Bench Insights cannot tell a correction from a fresh run. Close it: a
+`supersedesExperimentId` field, or first-class `comparison_group_id` with a parent pointer. Related: running a matrix
+(arms × trials) is ten `Eval` invocations orchestrated by the caller; a `sweep` helper that stamps `attempt_index` and the
+group would remove the boilerplate every harness rewrites.
+
+## Status check against main (2026-09-22)
+
+`typescript/src/evals.ts` on main is byte-for-byte the 0.2.4 file; no commit since v0.2.4 touches evals or tracing. Gap 1 is
+confirmed in code: trace verification treats 503 as retryable (line ~1629) and polls to the deadline. `verifyExperiment`'s
+"onboarding gate" is the team read-back checklist, not user onboarding (gap 6 stands).
+
 ## What worked without friction
 
 `pushDataset` (72 records, idempotent re-push), `createContextManifest`, experiment create with frozen `config`, per-case
 result upload with all 18 scorer axes, scorer auto-registration and version pinning, `baselineExperimentId`, and the
-finalize step returning the Registry-derived score summary — which matched the local `report.md` to three decimals.
+finalize step returning the Registry-derived score summary — which matched the local `report.md` to three decimals. Second round (run `k25`, 22 experiments across two lineages, 22 cases each, 12 scorers) registered without a single error once the manifest path bug on our side was fixed.

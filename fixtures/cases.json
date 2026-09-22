@@ -1,0 +1,10 @@
+[
+  { "name": "clean top-1 hit",            "gold": ["a:x"], "observed": ["a:x"],        "fallback": false, "expect": { "category": "correct",        "top1": 1, "falseDelegation": 0, "missed": 0, "jaccard": 1 } },
+  { "name": "wrong skill",                "gold": ["a:x"], "observed": ["a:y"],        "fallback": false, "expect": { "category": "wrong_skill",    "top1": 0, "falseDelegation": 1, "missed": 0, "jaccard": 0 } },
+  { "name": "missed delegation",          "gold": ["a:x"], "observed": [],             "fallback": false, "expect": { "category": "missed",         "top1": 0, "falseDelegation": 0, "missed": 1, "jaccard": 0 } },
+  { "name": "false positive on none",     "gold": [],      "observed": ["a:x"],        "fallback": false, "expect": { "category": "false_positive", "top1": 0, "falseDelegation": 1, "missed": 0, "jaccard": 0 } },
+  { "name": "correct none",               "gold": [],      "observed": [],             "fallback": false, "expect": { "category": "correct_none",   "top1": 1, "falseDelegation": 0, "missed": 0, "jaccard": 1 } },
+  { "name": "explicit none token ignored","gold": [],      "observed": ["none"],       "fallback": false, "expect": { "category": "correct_none",   "top1": 1, "falseDelegation": 0, "missed": 0, "jaccard": 1 } },
+  { "name": "multi partial",              "gold": ["a:x","a:y"], "observed": ["a:x"],  "fallback": false, "expect": { "category": "partial",        "top1": 1, "falseDelegation": 0, "missed": 0, "jaccard": 0.5 } },
+  { "name": "fallback listing",           "gold": ["a:x"], "observed": ["a:x","a:z"],  "fallback": true,  "expect": { "category": "fallback",       "top1": 1, "falseDelegation": 0, "missed": 0, "jaccard": 0.5 } }
+]

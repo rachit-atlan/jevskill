@@ -1,0 +1,124 @@
+{
+ "skills": [
+  {
+   "id": "react-query-v3-legacy",
+   "near": "tanstack"
+  },
+  {
+   "id": "framer-motion-animations",
+   "near": "transitions-dev"
+  },
+  {
+   "id": "lighthouse-a11y-audit",
+   "near": "web-interface-review"
+  },
+  {
+   "id": "nextjs-app-router-performance",
+   "near": "react-performance"
+  },
+  {
+   "id": "webpack-config",
+   "near": "vite"
+  },
+  {
+   "id": "obsidian-dataview",
+   "near": "obsidian-bases"
+  },
+  {
+   "id": "notion-export-markdown",
+   "near": "obsidian-markdown"
+  },
+  {
+   "id": "cypress-e2e",
+   "near": "frontend-testing"
+  },
+  {
+   "id": "storybook-stories",
+   "near": "frontend-patterns"
+  },
+  {
+   "id": "mermaid-diagrams",
+   "near": "json-canvas"
+  },
+  {
+   "id": "terraform-modules",
+   "near": null
+  },
+  {
+   "id": "kubernetes-helm",
+   "near": null
+  },
+  {
+   "id": "stripe-billing",
+   "near": null
+  },
+  {
+   "id": "salesforce-apex",
+   "near": null
+  },
+  {
+   "id": "graphql-schema-design",
+   "near": null
+  },
+  {
+   "id": "oauth-oidc-flows",
+   "near": null
+  },
+  {
+   "id": "i18n-localization",
+   "near": null
+  },
+  {
+   "id": "csv-etl-pipelines",
+   "near": null
+  },
+  {
+   "id": "redis-caching",
+   "near": null
+  },
+  {
+   "id": "jenkins-pipelines",
+   "near": null
+  },
+  {
+   "id": "unity-game-scripting",
+   "near": null
+  },
+  {
+   "id": "grpc-protobuf",
+   "near": null
+  },
+  {
+   "id": "aws-lambda-serverless",
+   "near": null
+  },
+  {
+   "id": "sap-abap",
+   "near": null
+  },
+  {
+   "id": "arduino-firmware",
+   "near": null
+  },
+  {
+   "id": "android-compose-ui",
+   "near": null
+  },
+  {
+   "id": "swift-swiftui",
+   "near": null
+  },
+  {
+   "id": "elasticsearch-queries",
+   "near": null
+  },
+  {
+   "id": "openapi-spec",
+   "near": null
+  },
+  {
+   "id": "cobol-modernization",
+   "near": null
+  }
+ ]
+}

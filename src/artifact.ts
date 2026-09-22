@@ -6,10 +6,12 @@ import { runDir } from "./run.ts";
 import type { TrialGrade } from "./regrade.ts";
 import type { ArmSummary } from "./report.ts";
 
-const ARM_ORDER = ["none", "native", "jev", "jev-pointer"];
-const ARM_LABEL: Record<string, string> = { none: "no skill", native: "native Claude Code", jev: "jev · body injected", "jev-pointer": "jev · pointer injected" };
+const ARM_ORDER = ["none", "native", "jev-pointer", "jev-mcp-nudged", "native-full", "jev", "jev-mcp"];
+/** arms drawn in the bar charts: the control plus the three two-trial primary arms; the rest are robustness rows in tables */
+const CHART_ARMS = ["none", "native", "jev-pointer", "jev-mcp-nudged"];
+const ARM_LABEL: Record<string, string> = { none: "no skill", native: "native Claude Code", jev: "jev · body injected", "jev-pointer": "jev · pointer injected", "jev-mcp-nudged": "jev · MCP, nudged", "jev-mcp": "jev · MCP, unprompted", "native-full": "native · full descriptions" };
 // categorical slots 1-3 (validated) for the three compared arms; gray for the no-skill control
-const ARM_COLOR: Record<string, string> = { native: "var(--series-1)", jev: "var(--series-2)", "jev-pointer": "var(--series-3)", none: "var(--muted-mark)" };
+const ARM_COLOR: Record<string, string> = { native: "var(--series-1)", "jev-pointer": "var(--series-2)", "jev-mcp-nudged": "var(--series-3)", none: "var(--muted-mark)", jev: "var(--muted-mark)", "jev-mcp": "var(--muted-mark)", "native-full": "var(--muted-mark)" };
 
 const esc = (s: unknown) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 const pct = (x: number | null) => x === null ? "–" : `${(x * 100).toFixed(x * 100 % 1 === 0 ? 0 : 1)}%`;
@@ -18,10 +20,11 @@ const k = (x: number | null) => x === null ? "–" : `${(x / 1000).toFixed(1)}K`
 
 export function renderArtifact(runId: string): string {
   const root = runDir(runId);
-  const report = JSON.parse(readFileSync(join(root, "report.json"), "utf8")) as { summaries: Record<string, ArmSummary>; primary?: Record<string, ArmSummary>; necessity: { separating: string[]; nonSeparating: string[] } };
+  const report = JSON.parse(readFileSync(join(root, "report.json"), "utf8")) as { summaries: Record<string, ArmSummary>; primary?: Record<string, ArmSummary>; necessity: { separating: string[]; nonSeparating: string[]; allFail?: string[] } };
   const grades = JSON.parse(readFileSync(join(root, "grades.json"), "utf8")) as TrialGrade[];
   const universe = JSON.parse(readFileSync(join(root, "universe.json"), "utf8")) as { skills: { noise: boolean }[] };
   const sep = new Set(report.necessity.separating);
+  const allKnowledge = new Set(grades.map(g => g.task)).size;
   const primary = report.primary!;
   const arms = ARM_ORDER.filter(a => a in report.summaries);
   const cmpArms = ARM_ORDER.filter(a => a in primary);
@@ -39,7 +42,7 @@ export function renderArtifact(runId: string): string {
 
   // grouped bars: pass rate + score
   const barGroup = (metric: (a: ArmSummary) => number | null, fmt: (x: number | null) => string, title: string, id: string, includeNone: boolean, max = 1) => {
-    const rows = [...(includeNone && noneSep ? [["none", noneSep] as const] : []), ...cmpArms.map(a => [a, primary[a]] as const)];
+    const rows = [...(includeNone && noneSep ? [["none", noneSep] as const] : []), ...cmpArms.filter(a => CHART_ARMS.includes(a)).map(a => [a, primary[a]] as const)];
     const W = 640, H = 40 * rows.length + 30, LW = 190, BW = W - LW - 70;
     const bars = rows.map(([a, s], i) => {
       const v = metric(s as ArmSummary) ?? 0, w = Math.max(2, (v / max) * BW), y = 10 + i * 40;
@@ -49,11 +52,13 @@ export function renderArtifact(runId: string): string {
   };
 
   const s = report.summaries;
-  const jevAdh = s.jev;
+  const jevAdh = s["jev-pointer"] ?? s.jev;
   const noise = universe.skills.filter(x => x.noise).length;
   const nTrials = (a: string) => grades.filter(g => g.arm === a && sep.has(g.task)).length;
   const wins = tasks.map(t => ({ t, native: cell(t, "native").pass, jev: cell(t, "jev").pass, ptr: cell(t, "jev-pointer").pass }));
   const jevWon = wins.filter(w => w.jev > w.native).length, jevLost = wins.filter(w => w.jev < w.native).length, ptrWon = wins.filter(w => w.ptr > w.native).length, ptrLost = wins.filter(w => w.ptr < w.native).length;
+  const mcpWins = tasks.map(t => ({ m: cell(t, "jev-mcp-nudged").pass, native: cell(t, "native").pass }));
+  const mcpWon = mcpWins.filter(w => w.m > w.native).length, mcpLost = mcpWins.filter(w => w.m < w.native).length;
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -79,17 +84,17 @@ figure{margin:18px 0;background:var(--surface-2);border-radius:8px;padding:14px 
 <p class="sub">One harness, one model, one task set. The only thing that changes between arms is how a skill reaches the model: Claude Code's own listing and Skill tool, or a jev decision injected before the model reads the prompt.</p>
 
 <div class="tiles">
-<div class="tile"><div class="n">${esc(pct(primary.jev.task_pass_rate))}</div><div class="l">task pass rate, jev routed</div><div class="d">native ${esc(pct(primary.native.task_pass_rate))} · no skill 0%</div></div>
-<div class="tile"><div class="n">${esc(pct(primary.jev.missed_rate))}</div><div class="l">applicable skill skipped, jev</div><div class="d">native ${esc(pct(primary.native.missed_rate))}</div></div>
-<div class="tile"><div class="n">${jevWon}–${jevLost}</div><div class="l">tasks won–lost vs native, jev body</div><div class="d">pointer ${ptrWon}–${ptrLost} · ${tasks.length} tasks × 2 trials</div></div>
+<div class="tile"><div class="n">${esc(pct(primary["jev-pointer"].task_pass_rate))}</div><div class="l">task pass rate, jev routed (pointer)</div><div class="d">native ${esc(pct(primary.native.task_pass_rate))} · no skill ${noneSep ? esc(pct(noneSep.task_pass_rate)) : "–"}</div></div>
+<div class="tile"><div class="n">${esc(pct(primary["jev-pointer"].missed_rate))}</div><div class="l">applicable skill skipped, jev</div><div class="d">native ${esc(pct(primary.native.missed_rate))}</div></div>
+<div class="tile"><div class="n">${ptrWon}–${ptrLost}</div><div class="l">tasks won–lost vs native, jev pointer</div><div class="d">${primary["jev-mcp-nudged"] ? `MCP nudged ${mcpWon}–${mcpLost} · ` : ""}${tasks.length} tasks × 2 trials</div></div>
 <div class="tile"><div class="n">−${esc(((1 - primary["jev-pointer"].first_call_context_tokens_mean! / primary.native.first_call_context_tokens_mean!) * 100).toFixed(0))}%</div><div class="l">context per call, pointer arm</div><div class="d">${esc(k(primary.native.first_call_context_tokens_mean))} → ${esc(k(primary["jev-pointer"].first_call_context_tokens_mean))} tokens</div></div>
-<div class="tile"><div class="n">${esc(usd(primary.jev.cost_usd_mean))}</div><div class="l">cost per task, jev body</div><div class="d">native ${esc(usd(primary.native.cost_usd_mean))} · incl. jev's own cost</div></div>
-<div class="tile"><div class="n">${esc(pct(jevAdh.verdict_adherence))}</div><div class="l">hook did what jev said</div><div class="d">payload valid ${esc(pct(jevAdh.payload_validity))} · ${esc(String(noise))} noise skills, 0 picked</div></div>
+<div class="tile"><div class="n">${esc(usd(primary["jev-pointer"].cost_usd_mean))}</div><div class="l">cost per task, jev pointer</div><div class="d">native ${esc(usd(primary.native.cost_usd_mean))} · incl. jev's own cost</div></div>
+<div class="tile"><div class="n">${s["jev-mcp"] ? esc(pct(s["jev-mcp"].router_call_rate)) : "–"}</div><div class="l">agent called the router unprompted (MCP)</div><div class="d">with a one-line nudge ${s["jev-mcp-nudged"] ? esc(pct(s["jev-mcp-nudged"].router_call_rate)) : "–"} · hook adherence ${esc(pct(jevAdh.verdict_adherence))}</div></div>
 </div>
 
 <h2>Summary</h2>
-<p>On the ${tasks.length} tasks where an installed skill materially changes the output, routing through jev raised the task pass rate from ${esc(pct(primary.native.task_pass_rate))} to ${esc(pct(primary.jev.task_pass_rate))}, never lost a task to native, and cut context per call by ${esc(((1 - primary.jev.first_call_context_tokens_mean! / primary.native.first_call_context_tokens_mean!) * 100).toFixed(0))}–${esc(((1 - primary["jev-pointer"].first_call_context_tokens_mean! / primary.native.first_call_context_tokens_mean!) * 100).toFixed(0))}%. The mechanism is uptake: native Claude Code picked the right skill ${esc(pct(primary.native.routing_top1_accuracy))} of the time but skipped it on ${esc(pct(primary.native.missed_rate))} of trials, and each skip cost the task. jev skipped none. Its own errors were ${esc(pct(primary.jev.wrong_skill_rate))} wrong-skill routes, all on one skill whose description reads as review-only.</p>
-<div class="callout"><strong>What this does not show.</strong> Everything ran at ${esc(String(universe.skills.length))} skills. The claim that jev matters more at 100+ skills is untested here. Sample is ${tasks.length} tasks × 2 trials; the pass-rate gap is ${esc(String(Math.round((primary.jev.task_pass_rate! - primary.native.task_pass_rate!) * nTrials("jev"))))} trials of ${nTrials("jev")}. Direction is consistent; magnitude is rough.</div>
+<p>On the ${tasks.length} tasks where an installed skill materially changes the output, jev pointer routing passed ${esc(pct(primary["jev-pointer"].task_pass_rate))} against native's ${esc(pct(primary.native.task_pass_rate))}, scored ${esc((primary["jev-pointer"].task_score_mean ?? 0).toFixed(3))} against ${esc((primary.native.task_score_mean ?? 0).toFixed(3))}, and cut context per call by ${esc(((1 - primary["jev-pointer"].first_call_context_tokens_mean! / primary.native.first_call_context_tokens_mean!) * 100).toFixed(0))}%. Native picked the right skill ${esc(pct(primary.native.routing_top1_accuracy))} of the time and skipped it on ${esc(pct(primary.native.missed_rate))} of trials; jev skipped none and misrouted ${esc(pct(primary["jev-pointer"].wrong_skill_rate))}, all on skills whose descriptions read as review-only. Left to itself with jev as an MCP tool, the agent called the router on ${s["jev-mcp"] ? esc(pct(s["jev-mcp"].router_call_rate)) : "–"} of trials; one system-prompt line raised that to ${s["jev-mcp-nudged"] ? esc(pct(s["jev-mcp-nudged"].router_call_rate)) : "–"}.</p>
+<div class="callout"><strong>What this does not show.</strong> Everything ran at ${esc(String(universe.skills.length))} skills. The claim that jev matters more at 100+ skills is untested here. Sample is ${tasks.length} tasks × 2 trials for the primary arms; the pass-rate gap between jev pointer and native is ${esc(String(Math.round((primary["jev-pointer"].task_pass_rate! - primary.native.task_pass_rate!) * nTrials("jev-pointer"))))} trials of ${nTrials("jev-pointer")}. Robustness arms (native with full descriptions, jev body, jev MCP unprompted) ran one trial each. ${report.necessity.allFail?.length ? `${report.necessity.allFail.length} tasks failed in every arm and are excluded as uninformative: ${esc(report.necessity.allFail.join(", "))}.` : ""}</div>
 
 <h2>Why this eval</h2>
 <p>Claude Code lists every enabled skill's description in the system prompt and lets the model decide whether to call one. That costs context on every turn, and it relies on the model choosing to reach for a skill. jev is a decision model: given text and a fixed set of options, it returns a probability distribution in about 350 ms for a fraction of a cent. The question was not "is jev a better classifier than Claude" but "if the harness routes with jev instead of leaving it to the model, do tasks come out better, cheaper, or both?"</p>
@@ -97,7 +102,7 @@ figure{margin:18px 0;background:var(--surface-2);border-radius:8px;padding:14px 
 
 <h2>Why jev is needed for skill routing</h2>
 <ol>
-<li><strong>Native skips skills.</strong> On house-specific prompts native routed well (${esc(pct(primary.native.routing_top1_accuracy))}) but still skipped the applicable skill on ${esc(pct(primary.native.missed_rate))} of trials; on a generic pilot set it skipped 3 of 4. Every skipped trial in this run failed the task. jev acting through a hook removes that decision.</li>
+<li><strong>Native skips skills.</strong> On house-specific prompts native routed well (${esc(pct(primary.native.routing_top1_accuracy))}) but still skipped the applicable skill on ${esc(pct(primary.native.missed_rate))} of trials; on an earlier generic pilot set it skipped 3 of 4. Skipped trials fail the task. jev acting through a hook removes that decision.</li>
 <li><strong>The native listing is capped.</strong> Claude Code truncates the skill listing at roughly 15k characters. With 63 skills present, 49 appeared as bare names, in alphabetical order, so which skills keep a description is an accident of naming. jev sees every description, up to 255 options.</li>
 <li><strong>It is cheap enough to run on every prompt.</strong> jev cost for all ${grades.length} trials in this run: ${esc(usd(Object.values(s).reduce((a, x) => a + x.jev_cost_usd_total, 0)))}. Latency ${esc(String(Math.round(s.jev.route_latency_p50_ms ?? 0)))} ms p50 inside the hook cold, about 430 ms with the warm-connection daemon.</li>
 <li><strong>Pointer injection keeps the saving.</strong> Injecting one line that names the skill and its path scored the same as injecting the full body, at the lowest context of any arm. The model reads the file when it wants it.</li>
@@ -105,10 +110,10 @@ figure{margin:18px 0;background:var(--surface-2);border-radius:8px;padding:14px 
 
 <h2>Method</h2>
 <table><thead><tr><th>arm</th><th>how the skill reaches the model</th><th class="num">trials</th></tr></thead><tbody>
-${arms.map(a => `<tr><td><span class="legend"><span style="--c:${ARM_COLOR[a]}">${esc(ARM_LABEL[a])}</span></span></td><td>${esc(({ none: "Controlled config, no skills, no hook. The necessity filter: a task that passes here is cut.", native: "Controlled config; the same 51 skills installed as personal skills, listed by Claude Code as shipped; the model calls the Skill tool if it chooses.", jev: "Controlled config, no skills listed; a UserPromptSubmit hook asks jev which skill applies and injects that SKILL.md.", "jev-pointer": "Same hook; injects one line naming the skill and its path instead of the body." } as Record<string, string>)[a])}</td><td class="num">${nTrials(a)}</td></tr>`).join("")}
+${arms.map(a => `<tr><td><span class="legend"><span style="--c:${ARM_COLOR[a]}">${esc(ARM_LABEL[a])}</span></span></td><td>${esc(({ none: "Controlled config, no skills, no hook. The necessity filter: a task that passes here is cut.", native: `Controlled config; the same ${universe.skills.length} skills installed as personal skills, listed by Claude Code as shipped (descriptions truncated past ~15k chars); the model calls the Skill tool if it chooses.`, "native-full": "Native with the listing budget raised so every description is visible. Fairness check, one trial.", jev: "Controlled config, no skills listed; a UserPromptSubmit hook asks jev which skill applies and injects that SKILL.md body. One trial.", "jev-pointer": "Same hook; injects one line naming the skill and its path instead of the body.", "jev-mcp-nudged": "No skills listed, no hook; jev exposed as MCP tools route_skill / load_skill, plus one system-prompt line saying to route first.", "jev-mcp": "Same MCP tools with no nudge: does the agent think to ask? One trial." } as Record<string, string>)[a] ?? "")}</td><td class="num">${nTrials(a)}</td></tr>`).join("")}
 </tbody></table>
 <p><strong>Fairness controls.</strong> Same model, permission mode, turn limit, tasks, seed files. Identical generated config dirs with no plugins, MCP servers or CLAUDE.md. The same ${esc(String(universe.skills.length))}-skill universe in every arm, including ${esc(String(noise))} synthetic noise skills (near-neighbours and unrelated domains); none was ever picked. Native gets several turns and a Skill call anywhere counts. Graders are deterministic regex, JSON and command checks with fixture tests; no LLM judge in the primary set. Cost is Claude Code's own cache-aware figure. Thresholds live in one config file, never in a grader.</p>
-<p><strong>Tasks.</strong> 17 tasks authored from rules quoted out of the installed SKILL.md files (view transitions, CSS transitions, Obsidian Bases, knap, Vite, testing, taste, review format, JSON Canvas) plus 2 no-skill controls. Each ran once with no skill available; ${report.necessity.nonSeparating.length} passed and were removed (${esc(report.necessity.nonSeparating.join(", "))}). The ${tasks.length} remaining are the primary set.</p>
+<p><strong>Tasks.</strong> ${allKnowledge} tasks authored from rules quoted out of the installed SKILL.md files (view transitions, CSS transitions, Obsidian Bases, knap, Vite, testing, taste, review format, JSON Canvas, docx, xlsx, pptx, pdf), including no-skill controls. Each ran once with no skill available; ${report.necessity.nonSeparating.length} passed and were removed (${esc(report.necessity.nonSeparating.join(", "))})${report.necessity.allFail?.length ? `, and ${report.necessity.allFail.length} that fail in every arm are excluded as uninformative (${esc(report.necessity.allFail.join(", "))})` : ""}. The ${tasks.length} remaining are the primary set.</p>
 
 <h2>Results</h2>
 ${barGroup(a => a.task_pass_rate, pct, "Task pass rate on the primary set", "fig-pass", true)}

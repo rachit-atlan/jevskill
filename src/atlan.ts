@@ -7,7 +7,7 @@
  *   each trial             -> one trace with task + scorer spans, uploaded and verified by the SDK
  * Local report.md remains the verdict layer (Registry has no gates or run-over-run diff).
  */
-import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
 import { join, resolve } from "node:path";
@@ -48,7 +48,7 @@ export async function pushTasksDataset(name = DATASET_NAME_DEFAULT) {
   const tasks = loadTasks();
   return pushDataset(atlanClient(), name, taskRecords(tasks), {
     displayName: "jev skill-routing tasks",
-    description: `Skill-routing eval tasks: ${tasks.length} cases, gold skill ids, outcome checks. Source: tasks/tasks.jsonl`,
+    description: `Skill-routing eval tasks: ${tasks.length} cases, gold skill ids, outcome checks. Source: tasks/*.jsonl`,
   });
 }
 
@@ -94,7 +94,7 @@ export async function buildContextManifest(runId: string, universe: Universe) {
   const items = [
     { kind: "config", name: "eval.yml", version: ver(resolve(REPO_ROOT, "eval.yml")), digest: sha256File(join(runDir(runId), "config.snapshot.yml")) },
     { kind: "skill", name: "universe.json", version: universeHash(universe), digest: sha256File(join(runDir(runId), "universe.json")) },
-    { kind: "dataset", name: "tasks.jsonl", version: ver(resolve(REPO_ROOT, "tasks/tasks.jsonl")), digest: sha256File(resolve(REPO_ROOT, "tasks/tasks.jsonl")) },
+    ...readdirSync(resolve(REPO_ROOT, "tasks")).filter(f => f.endsWith(".jsonl")).sort().map(f => ({ kind: "dataset", name: `tasks/${f}`, version: ver(resolve(REPO_ROOT, "tasks", f)), digest: sha256File(resolve(REPO_ROOT, "tasks", f)) })),
     { kind: "prompt", name: "route-hook.ts", version: ver(resolve(REPO_ROOT, "src/hook/route-hook.ts")), digest: sha256File(resolve(REPO_ROOT, "src/hook/route-hook.ts")) },
     { kind: "harness", name: "claude-code", version: claudeVersion(), digest: `sha256:${createHash("sha256").update(claudeVersion()).digest("hex")}` },
   ];

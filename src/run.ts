@@ -85,6 +85,9 @@ export async function runTrial(task: Task, arm: string, trial: number, runId: st
   for (const [rel, content] of Object.entries(task.seed ?? {})) {
     mkdirSync(dirname(join(ws, rel)), { recursive: true }); writeFileSync(join(ws, rel), content);
   }
+  // Pin the workspace as its own npm/pnpm project root. Without this, `npm install` inside a workspace walks up to the
+  // nearest package.json (this repo's) and edits it: observed in run k25 (docx + pptxgenjs landed in our package.json).
+  if (!existsSync(join(ws, "package.json"))) writeFileSync(join(ws, "package.json"), JSON.stringify({ name: `ws-${task.id}`, private: true }, null, 2) + "\n");
   for (const cmd of task.seed_commands ?? []) {
     const r = spawnSync("bash", ["-lc", cmd], { cwd: ws, encoding: "utf8", timeout: 120_000 });
     if (r.status !== 0) throw new Error(`seed command failed for ${task.id}: ${cmd}\n${(r.stdout + r.stderr).slice(-400)}`);

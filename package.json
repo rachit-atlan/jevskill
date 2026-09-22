@@ -1,0 +1,35 @@
+{
+  "name": "jev-skill-routing-eval",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Eval: jev-routed skill injection vs Claude Code's native skill routing, on the same tasks",
+  "engines": {
+    "bun": ">=1.2"
+  },
+  "scripts": {
+    "skills": "bun src/cli.ts skills",
+    "route": "bun src/cli.ts route",
+    "run": "bun src/cli.ts run",
+    "regrade": "bun src/cli.ts regrade",
+    "report": "bun src/cli.ts report",
+    "inspect": "bun src/cli.ts inspect",
+    "test": "bun test tests/",
+    "typecheck": "bunx tsc --noEmit",
+    "dataset-push": "bun src/cli.ts dataset-push",
+    "atlan-eval": "bun src/cli.ts atlan-eval",
+    "atlan-onboard": "bun src/atlan-onboard.ts",
+    "daemon": "bun src/hook/route-daemon.ts",
+    "artifact": "bun src/artifact.ts"
+  },
+  "dependencies": {
+    "@atlanai/sdk": "0.2.4",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "yaml": "^2.6.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.2"
+  }
+}

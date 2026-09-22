@@ -1,0 +1,97 @@
+# Single source of truth. Graders return numbers; every cutoff lives here.
+
+jev:
+  model: jev-1.13.0            # pinned. never "latest": fitted thresholds belong to a build
+  endpoint: https://api.typesafe.ai/v1/systemone
+  price_per_m_input_usd: 0.042 # output is unbilled
+  timeout_ms: 5000
+  daemon_socket: /tmp/jevroute.sock   # `bun run daemon` keeps a warm TLS connection; the hook uses it when present, else calls jev directly
+  question_id: skill
+  instructions: >-
+    A developer typed this prompt into a coding agent. Which one specialised
+    skill, if any, should be loaded to handle it? Pick "none" when the prompt
+    is ordinary work that needs no specialised skill.
+  none_description: >-
+    No specialised skill applies. Ordinary coding, questions, or chat that the
+    agent should handle with its general abilities.
+
+policy:
+  confidence_threshold: 0.60   # inject top-1 when confidence >= this
+  fallback: listing            # what to inject below threshold: listing | none
+  fallback_top_k: 3            # for fallback=listing, how many candidates (0 = all)
+  route_none_min_prob: 0.50    # treat as "none" when P(none) >= this, regardless of confidence
+  inject_mode: body            # body | pointer. Env JEVROUTE_INJECT_MODE overrides per arm
+
+universe:
+  source: claude-config        # discover from ~/.claude enabled plugins + personal skills
+  claude_config_dir: ~/.claude
+  include_personal_skills: true
+  include_synced_skills: true   # ~/.claude/skills/synced/**/SKILL.md (Anthropic document skills etc.); not loaded by stock Claude Code, but both controlled arms get them
+  exclude: []                  # skill ids to drop from the routable set
+  noise_dir: noise             # synthetic decoy skills added to BOTH arms; gold never points here
+  include_noise: true
+  # Try a description change before asking the skill owner to ship it. Applied to the universe snapshot,
+  # so BOTH arms (native listing and jev criteria) see the same text. Empty by default: the eval measures
+  # the skills as installed. Measured 2026-09-22: appending the sentence below to frontend-taste flips
+  # both k-taste-* prompts from frontend-patterns to frontend-taste (0.87 / 0.71).
+  description_overrides: {}
+  # description_overrides:
+  #   atlan-frontend-frontend-taste: { append: " Also use when GENERATING any new landing page, hero, marketing section, or dashboard in .tsx so the banned patterns never get written in the first place." }
+
+# Controlled arms run in generated CLAUDE_CONFIG_DIRs that are identical (no plugins, no MCP, no CLAUDE.md)
+# except for how skills reach the model. `base` picks the config dir; `env` is added to the claude process.
+# Claude Code caps the skill listing with SLASH_COMMAND_TOOL_CHAR_BUDGET (default ~15k chars): past the cap,
+# skills are listed by name only. Measured 2026-09-22 with 63 skills: 14 kept descriptions, 49 were name-only.
+arms:
+  native:
+    base: native
+    description: harness as shipped; universe (real + noise) installed as skills; default listing budget, so most skills are name-only
+  native-full:
+    base: native
+    env: { SLASH_COMMAND_TOOL_CHAR_BUDGET: "200000" }
+    description: same as native but every skill description fits in the listing; information parity with jev, higher context
+  jev:
+    base: jev
+    description: no skills in the listing; a UserPromptSubmit hook routes via jev and injects the chosen SKILL.md body
+  jev-pointer:
+    base: jev
+    env: { JEVROUTE_INJECT_MODE: pointer }
+    description: "same hook, but injects one line naming the chosen skill and its path; the model reads it if it wants. Keeps the context saving without paying the body"
+  jev-mcp:
+    base: mcp
+    description: "no skills listed, no hook; jev is an MCP tool (route_skill / load_skill) the agent may call. Measures agent-initiated routing"
+  jev-mcp-nudged:
+    base: mcp
+    append_system_prompt: "Before starting any non-trivial task, call the route_skill tool with the user's request to find out whether a specialised skill applies, and if one does, load and follow it."
+    description: "same MCP tools plus one system-prompt line telling the agent to route first. Separates 'did not know to ask' from 'asked and ignored'"
+  none:
+    base: bare
+    description: "no skills, no hook. The necessity filter: a task that passes here cannot separate the arms and is cut from the primary set"
+  native-real:
+    base: real
+    description: the user's actual ~/.claude (plugins, MCP, agents); realism check only, not a controlled comparison
+
+claude:
+  model: sonnet
+  max_turns_full: 30
+  max_turns_routing_only: 3       # room to explore before invoking a skill; a Skill call anywhere counts
+  permission_mode: bypassPermissions
+
+run:
+  trials: 1
+  concurrency: 5
+  budget_usd: 90               # runner stops before exceeding this (25-task rerun: ~28 tasks × (1 + 4 arms × 2 trials))
+
+judge:
+  model: haiku
+  max_turns: 4                 # structured output arrives via a tool call; 1 turn ends in error_max_turns
+
+calibration:
+  min_n: 30                    # below this, Brier/ECE are not reported
+
+gates:                         # pass/fail verdicts on a run, applied in report
+  jev.routing_top1_accuracy: { min: 0.80 }
+  jev.false_positive_rate:    { max: 0.10 }
+  jev.verdict_adherence:      { min: 0.99 }
+  jev.payload_validity:       { min: 0.99 }
+  jev.route_latency_p95_ms:   { max: 1500 }
